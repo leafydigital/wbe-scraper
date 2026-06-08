@@ -21,8 +21,13 @@ const { chromium } = require("playwright");
 const app  = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+app.use(cors({
+  origin: ['https://wanderbreezeexim.com', 'http://localhost:5173'],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'x-api-key'],
+}));
 app.use(express.json());
+app.options('*', cors()); // handle preflight
 
 // ── API Key auth — set SCRAPER_API_KEY in Railway env vars ───
 const API_KEY = process.env.SCRAPER_API_KEY || null;
@@ -38,21 +43,108 @@ app.use((req, res, next) => {
 
 // ── Config ────────────────────────────────────────────────────
 const PAGES_TO_CHECK = [
+  // ── Core ─────────────────────────────────────────────────
   "",
   "/contact",
   "/contact-us",
+  "/contact_us",
   "/contactus",
+  "/contacts",
+  "/contact/",
+
+  // ── WordPress common slugs ────────────────────────────────
+  "/contact-us/",
+  "/get-in-touch",
+  "/get-in-touch/",
+  "/reach-us",
+  "/reach-out",
+  "/enquiry",
+  "/enquire",
+  "/inquiry",
+  "/send-message",
+  "/book-appointment",
+  "/appointment",
+  "/book",
+  "/booking",
+
+  // ── PHP / static site extensions ─────────────────────────
+  "/contact.php",
+  "/contact-us.php",
+  "/contactus.php",
+  "/contact.html",
+  "/contact-us.html",
+  "/contactus.html",
+  "/contact.htm",
+  "/enquiry.php",
+  "/enquiry.html",
+  "/getintouch.php",
+  "/getintouch.html",
+
+  // ── Location-based contact pages (clinics/local biz) ─────
+  "/melbourne-contact",
+  "/sydney-contact",
+  "/brisbane-contact",
+  "/perth-contact",
+  "/contact-melbourne",
+  "/contact-sydney",
+  "/locations",
+  "/our-locations",
+  "/find-us",
+  "/visit-us",
+  "/our-clinic",
+  "/our-office",
+  "/our-practice",
+  "/clinic",
+  "/clinic-contact",
+
+  // ── About pages (often have email) ───────────────────────
   "/about",
   "/about-us",
+  "/about_us",
   "/aboutus",
-  "/team",
+  "/about/",
+  "/about-us/",
+  "/our-story",
   "/our-team",
-  "/kontakt",
-  "/impressum",
-  "/over-ons",
+  "/team",
+  "/staff",
+  "/meet-the-team",
+
+  // ── Shopify ───────────────────────────────────────────────
+  "/pages/contact",
+  "/pages/contact-us",
+  "/pages/about",
+  "/pages/about-us",
+  "/pages/get-in-touch",
+
+  // ── Squarespace / Wix / Webflow ──────────────────────────
+  "/contact-1",
+  "/contact-page",
+  "/contact-form",
+  "/contactpage",
+
+  // ── European / multilingual ───────────────────────────────
+  "/kontakt",           // German/Dutch
+  "/impressum",         // German legal (almost always has email)
   "/imprint",
-  "/reach-us",
+  "/ueber-uns",
+  "/uber-uns",
+  "/over-ons",          // Dutch
+  "/nous-contacter",    // French
+  "/contacto",          // Spanish
+  "/contatti",          // Italian
+  "/contato",           // Portuguese
+  "/iletisim",          // Turkish
+
+  // ── Footer/legal pages (often contain email) ─────────────
+  "/privacy-policy",
+  "/privacy",
+  "/legal",
+  "/terms",
+  "/disclaimer",
+  "/sitemap",
 ];
+
 
 const SOCIAL_DOMAINS = [
   "facebook.com",
@@ -158,36 +250,81 @@ async function fetchPage(url) {
   }
 }
 
-// ── Scrape Facebook with Playwright (real browser — your exact script) ──
+// ── Scrape Facebook with Playwright (real browser) ──────────
 async function scrapeFacebookWithPlaywright(browser, facebookUrl) {
   const page = await browser.newPage();
   try {
     console.log(`[Facebook] Scraping: ${facebookUrl}`);
 
+    // Set a real user agent to avoid bot detection
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+    });
+
+    const allEmails = new Set();
+
+    // ── Visit 1: Main page (homepage) ──────────────────────
     await page.goto(facebookUrl, {
       waitUntil: "domcontentloaded",
       timeout: 60000,
     });
+    await page.waitForTimeout(3000);
 
-    // Wait for page to settle
-    await page.waitForTimeout(4000);
-
-    // Scroll several times to load dynamic content — exactly like your script
-    for (let i = 0; i < 5; i++) {
+    // Scroll to load dynamic content
+    for (let i = 0; i < 4; i++) {
       await page.evaluate(() => window.scrollBy(0, 2000));
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(1000);
     }
 
-    // Get both rendered text and raw HTML — exactly like your script
-    const bodyText = await page.locator("body").innerText().catch(() => "");
-    const html     = await page.content();
+    let bodyText = await page.locator("body").innerText().catch(() => "");
+    let html = await page.content();
+    extractEmails(bodyText).forEach(e => allEmails.add(e));
+    extractEmails(html).forEach(e => allEmails.add(e));
 
-    // Extract from visible text + HTML
-    const textEmails = extractEmails(bodyText);
-    const htmlEmails = extractEmails(html);
+    // ── Visit 2: About tab — this is where email/contact info lives ──
+    const aboutUrl = facebookUrl.replace(/\/$/, "") + "/about";
+    try {
+      await page.goto(aboutUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      await page.waitForTimeout(3000);
 
-    const all = [...new Set([...textEmails, ...htmlEmails])];
-    console.log(`[Facebook] Found ${all.length} emails from ${facebookUrl}`);
+      // Scroll the about page
+      for (let i = 0; i < 3; i++) {
+        await page.evaluate(() => window.scrollBy(0, 1500));
+        await page.waitForTimeout(800);
+      }
+
+      bodyText = await page.locator("body").innerText().catch(() => "");
+      html = await page.content();
+      extractEmails(bodyText).forEach(e => allEmails.add(e));
+      extractEmails(html).forEach(e => allEmails.add(e));
+      console.log(`[Facebook] About page scraped: ${allEmails.size} emails so far`);
+    } catch (err) {
+      console.log(`[Facebook] About page failed: ${err.message}`);
+    }
+
+    // ── Visit 3: about_contact — dedicated contact info page ──
+    const contactUrl = facebookUrl.replace(/\/$/, "") + "/about_contact_and_basic_info";
+    try {
+      await page.goto(contactUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      await page.waitForTimeout(3000);
+
+      bodyText = await page.locator("body").innerText().catch(() => "");
+      html = await page.content();
+      extractEmails(bodyText).forEach(e => allEmails.add(e));
+      extractEmails(html).forEach(e => allEmails.add(e));
+      console.log(`[Facebook] Contact page scraped: ${allEmails.size} emails so far`);
+    } catch (err) {
+      console.log(`[Facebook] Contact page failed: ${err.message}`);
+    }
+
+    const all = [...allEmails];
+    console.log(`[Facebook] Total found: ${all.length} emails from ${facebookUrl}`);
     return all;
   } catch (err) {
     console.log(`[Facebook] Error: ${err.message}`);
