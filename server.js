@@ -457,11 +457,11 @@ app.post("/scrape-batch", async (req, res) => {
 });
 
 // ── Start ─────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`\n✅ WBE Scraper Service running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ WBE Scraper Service running on http://localhost:${PORT}`);
   console.log(`   POST /scrape        — scrape single website`);
   console.log(`   POST /scrape-batch  — scrape multiple websites`);
-  console.log(`   GET  /health        — health check\n`);
+  console.log(`   GET  /health        — health check`);
 });
 
 // ═══════════════════════════════════════════════════════════════
