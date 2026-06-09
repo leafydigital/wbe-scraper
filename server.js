@@ -22,7 +22,7 @@ const app  = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors({
-  origin: ['https://wanderbreezeexim.com', 'http://localhost:5173', 'wbe-scraper.up.railway.app', 'production.up.railway.app'],
+  origin: ['https://wanderbreezeexim.com', 'http://localhost:5173', 'https://wbe-scraper.up.railway.app', 'https://production.up.railway.app'],
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'x-api-key'],
 }));
